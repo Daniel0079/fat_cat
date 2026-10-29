@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>臭臉貓 角色陪伴小舞台</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", "PingFang TC", "Microsoft JhengHei", sans-serif;
+    background: linear-gradient(160deg, #f5ead6 0%, #e8d5b5 50%, #d4c0a0 100%);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px 16px 40px;
+    color: #5a4a3a;
+  }
+  h1 {
+    font-size: clamp(2rem, 6vw, 2.8rem);
+    margin-bottom: 24px;
+    text-align: center;
+    letter-spacing: 2px;
+  }
+  .stage {
+    position: relative;
+    width: 100%;
+    max-width: 420px;
+    min-height: 320px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    margin-bottom: 20px;
+  }
+  #character {
+    max-width: 240px;
+    width: auto;
+    height: auto;
+    display: block;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-drag: none;
+    background: transparent;
+    transition: transform 0.15s ease;
+  }
+  #character.jump {
+    animation: jump 0.4s ease;
+  }
+  @keyframes jump {
+    0% { transform: translateY(0); }
+    40% { transform: translateY(-22px); }
+    100% { transform: translateY(0); }
+  }
+  .speech {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(255,255,255,0.92);
+    padding: 8px 14px;
+    border-radius: 16px;
+    font-size: 1.15rem;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+  }
+  .speech.show { opacity: 1; }
+  .food {
+    position: absolute;
+    font-size: 2.2rem;
+    pointer-events: none;
+    animation: fall 0.8s ease-in forwards;
+  }
+  @keyframes fall {
+    0% { top: -40px; opacity: 1; }
+    100% { top: 140px; opacity: 0; }
+  }
+  .heart {
+    position: absolute;
+    font-size: 1.6rem;
+    pointer-events: none;
+    animation: floatUp 1.2s ease-out forwards;
+  }
+  @keyframes floatUp {
+    0% { opacity: 1; transform: translateY(0) scale(1); }
+    100% { opacity: 0; transform: translateY(-80px) scale(1.4); }
+  }
+  .error-msg {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    font-size: 1.1rem;
+    line-height: 1.6;
+    max-width: 280px;
+    color: #8a6a4a;
+  }
+  .controls {
+    width: 100%;
+    max-width: 420px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-top: 10px;
+  }
+  .row {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  button, select {
+    font-size: 1.25rem;
+    padding: 14px 22px;
+    border: none;
+    border-radius: 12px;
+    background: #fff8ee;
+    color: #5a4a3a;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.08);
+    min-width: 120px;
+  }
+  button:active { transform: scale(0.97); }
+  select { min-width: 100px; }
+  .water-panel {
+    background: rgba(255,255,255,0.55);
+    border-radius: 16px;
+    padding: 16px 18px;
+    text-align: center;
+  }
+  .water-panel .count {
+    font-size: 2rem;
+    margin: 6px 0 10px;
+  }
+  .water-panel .target-label {
+    font-size: 1.05rem;
+    margin-bottom: 8px;
+  }
+</style>
+</head>
+<body>
+  <h1>臭臉貓</h1>
+
+  <div class="stage" id="stage">
+    <div class="speech" id="speech"></div>
+    <img id="character" alt="臭臉貓" style="display:none;">
+    <div class="error-msg" id="error" style="display:none;">找不到 idle.gif，請確認它和網頁檔放在同一個資料夾，檔名全部小寫</div>
+  </div>
+
+  <div class="controls">
+    <div class="row">
+      <button id="btnFeed">餵食</button>
+      <button id="btnPet">摸摸</button>
+    </div>
+
+    <div class="water-panel">
+      <div class="target-label">今天目標</div>
+      <select id="targetSelect"></select>
+      <div class="count" id="waterCount">0 杯</div>
+      <div class="row">
+        <button id="btnDrink">喝了一杯</button>
+        <button id="btnReset">歸零</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+const ACTION_DURATION = 3200; // 可調整：預設 3.2 秒
+const PET_PHRASES = [
+  "嗨，今天也一起加油！",
+  "我在這裡陪你～",
+  "再摸一下嘛！"
+];
+let petIndex = 0;
+let isActing = false;
+
+const charImg = document.getElementById("character");
+const speech = document.getElementById("speech");
+const stage = document.getElementById("stage");
+const errorEl = document.getElementById("error");
+
+// 預載並檢查圖片
+const idleSrc = "idle.gif";
+const eatSrc = "eat.gif";
+const happySrc = "happy.gif";
+
+function checkImage(src) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => resolve(true);
+    img.onerror = () => resolve(false);
+    img.src = src;
+  });
+}
+
+async function initImages() {
+  const hasIdle = await checkImage(idleSrc);
+  if (!hasIdle) {
+    errorEl.style.display = "block";
+    return;
+  }
+  charImg.src = idleSrc;
+  charImg.style.display = "block";
+
+  // 預先檢查其他動作圖（失敗時之後會自動 fallback）
+  await Promise.all([checkImage(eatSrc), checkImage(happySrc)]);
+}
+
+function showSpeech(text) {
+  speech.textContent = text;
+  speech.classList.add("show");
+  clearTimeout(showSpeech._t);
+  showSpeech._t = setTimeout(() => speech.classList.remove("show"), ACTION_DURATION + 400);
+}
+
+function spawnFood() {
+  const food = document.createElement("div");
+  food.className = "food";
+  food.textContent = ["🍎","🍞","🐟","🍙","🧀"][Math.floor(Math.random()*5)];
+  const x = 40 + Math.random() * 60; // 大致在角色旁
+  food.style.left = x + "%";
+  stage.appendChild(food);
+  setTimeout(() => food.remove(), 900);
+}
+
+function spawnHearts() {
+  for (let i = 0; i < 3; i++) {
+    const h = document.createElement("div");
+    h.className = "heart";
+    h.textContent = "♥";
+    h.style.left = (30 + Math.random()*40) + "%";
+    h.style.top = (60 + Math.random()*20) + "%";
+    h.style.animationDelay = (i * 0.15) + "s";
+    stage.appendChild(h);
+    setTimeout(() => h.remove(), 1400);
+  }
+}
+
+function playAction(gifSrc, speechText) {
+  if (isActing) return;
+  isActing = true;
+
+  // 嘗試使用指定 GIF，失敗則用 idle
+  const test = new Image();
+  test.onload = () => {
+    charImg.src = gifSrc;
+    if (speechText) showSpeech(speechText);
+    setTimeout(() => {
+      charImg.src = idleSrc;
+      isActing = false;
+    }, ACTION_DURATION);
+  };
+  test.onerror = () => {
+    charImg.src = idleSrc;
+    if (speechText) showSpeech(speechText);
+    setTimeout(() => {
+      isActing = false;
+    }, ACTION_DURATION);
+  };
+  test.src = gifSrc;
+}
+
+// 餵食
+document.getElementById("btnFeed").addEventListener("click", () => {
+  if (isActing) return;
+  spawnFood();
+  playAction(eatSrc, "好好吃！");
+});
+
+// 摸摸
+function doPet() {
+  if (isActing) return;
+  charImg.classList.add("jump");
+  setTimeout(() => charImg.classList.remove("jump"), 400);
+  spawnHearts();
+  const phrase = PET_PHRASES[petIndex % PET_PHRASES.length];
+  petIndex++;
+  playAction(happySrc, phrase);
+}
+document.getElementById("btnPet").addEventListener("click", doPet);
+charImg.addEventListener("click", doPet);
+
+// ===== 喝水紀錄 =====
+const WATER_KEY = "stinkyCatWater";
+const TARGET_KEY = "stinkyCatTarget";
+
+function todayStr() {
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+}
+
+function loadWater() {
+  try {
+    const raw = localStorage.getItem(WATER_KEY);
+    if (!raw) return { date: todayStr(), count: 0 };
+    const data = JSON.parse(raw);
+    if (data.date !== todayStr()) return { date: todayStr(), count: 0 };
+    return data;
+  } catch {
+    return { date: todayStr(), count: 0 };
+  }
+}
+
+function saveWater(data) {
+  localStorage.setItem(WATER_KEY, JSON.stringify(data));
+}
+
+function loadTarget() {
+  const t = parseInt(localStorage.getItem(TARGET_KEY), 10);
+  return (t >= 4 && t <= 12) ? t : 8;
+}
+
+function updateWaterUI() {
+  const data = loadWater();
+  document.getElementById("waterCount").textContent = data.count + " 杯";
+}
+
+// 目標下拉
+const sel = document.getElementById("targetSelect");
+for (let i = 4; i <= 12; i++) {
+  const opt = document.createElement("option");
+  opt.value = i;
+  opt.textContent = i + " 杯";
+  sel.appendChild(opt);
+}
+sel.value = loadTarget();
+sel.addEventListener("change", () => {
+  localStorage.setItem(TARGET_KEY, sel.value);
+});
+
+document.getElementById("btnDrink").addEventListener("click", () => {
+  const data = loadWater();
+  data.count += 1;
+  data.date = todayStr();
+  saveWater(data);
+  updateWaterUI();
+});
+
+document.getElementById("btnReset").addEventListener("click", () => {
+  saveWater({ date: todayStr(), count: 0 });
+  updateWaterUI();
+});
+
+// 初始化
+initImages().then(() => {
+  updateWaterUI();
+});
+</script>
+</body>
+</html>
